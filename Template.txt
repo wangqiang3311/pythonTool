@@ -1,0 +1,113 @@
+using Acme.Common;
+using NLog;
+using ServiceStack;
+using ServiceStack.Data;
+using ServiceStack.OrmLite;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.Design;
+using System.Data;
+using System.Linq;
+using System.Linq.Expressions;
+using Utils.Templater;
+using YCIOT.ServiceModel.MQ;
+using YCIOT.ServiceModel.Table;
+
+namespace YCIOT.Standard.DataService
+{
+    /// <summary>
+    /// $w{Summary}
+    /// </summary>
+    [Api("Service Description")]
+    [Tag("Report")]
+    [Route("$w{Route}", "GET",
+       Summary = "$w{Summary}",
+       Notes = "$w{Summary}")]
+    public class $w{RequestClassName} : RequestParam { }
+   
+    public class $w{RequestClassName}Service : Service
+    {
+        //[Authenticate]
+        public object Get($w{RequestClassName} request)
+        {
+            var result = new ReportTable
+            {
+                ErrCode = 0,
+                ErrMsg = "ok"
+            };
+            var data = GetData(request);
+            if (data != null)
+            {
+
+                string templateName = request.IsLatest ? "$w{TemplateName}" : "$w{TemplateNameHistory}";
+
+                string reportName = request.IsLatest ? "$w{ReportName}" : "$w{ReportNameHistory}";
+
+                reportName = $"{reportName}_{DateTime.Now.ToLocalTime():yyyy-MM-dd_HH_mm_ss}.xlsx";
+
+                return ReportFiles.PublishFile(templateName, reportName, data);
+            }
+            else
+            {
+                result.ErrCode = -1;
+                result.ErrMsg = $"文件不存在";
+
+                return result;
+            }
+
+        }
+        
+        private dynamic GetData($w{RequestClassName} request)
+        {
+            if (request.IsLatest)
+                return GetData<$w{DataSourceClass}>(request, t => t.DepId == request.DepId, t => t.WellId == request.WellId, d => d.DateTime.ToString("yyyyMMdd") == request.DateTime.Value.ToString("yyyyMMdd"));
+            return GetData<$w{DataSourceClassHistory}>(request, t => t.DepId == request.DepId, t => t.WellId == request.WellId, d => d.DateTime.ToString("yyyyMMdd") == request.DateTime.Value.ToString("yyyyMMdd"));
+        }
+
+        private dynamic GetData<T>($w{RequestClassName} request, Expression<Func<T, bool>> DepFilter, Expression<Func<T, bool>> WellFilter, Expression<Func<T, bool>> DateFilter)
+        {
+            var connectionFactory = HostContext.TryResolve<IDbConnectionFactory>();
+            using var dbFac = connectionFactory.OpenDbConnection();
+
+            Expression<Func<T, bool>> exp = DepFilter;
+
+            if (request.WellId > 0)
+            {
+                exp = exp.And(WellFilter);
+            }
+            if (request.DateTime.HasValue)
+            {
+                exp = exp.And(DateFilter);
+            }
+            var datas = dbFac.Select<T>(exp);
+
+
+            List<dynamic> objs = new List<dynamic>();
+
+            int i = 0;
+
+            string depName = "";
+            foreach (var item in datas)
+            {
+                i++;
+                dynamic w = item;
+                w.AlarmMsg = w.AlarmMsg == "0" ? "异常" : "正常";
+
+                if (string.IsNullOrEmpty(depName))
+                {
+                    depName = w.DepName;
+                }
+                objs.Add(new
+                {
+                    Index = i,
+                    ReturnDateTime = w.DateTime.ToString("yyyy-MM-dd HH:mm:ss"),
+
+                    $w_foreach{DataSourceContent}
+                   
+                });
+            }
+            return new { Depname = depName, d = objs };
+        }
+    }
+}

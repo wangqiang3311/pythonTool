@@ -1,0 +1,5 @@
+dynaconf_merge = true
+[default]
+colors = ["pink"]
+parameters = {enabled=false}
+password = 9999

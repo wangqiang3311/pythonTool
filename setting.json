@@ -1,0 +1,10 @@
+{
+    "development": {
+        "HOST": "server",
+        "PORT": 5555,
+        "AUTH": {
+            "user": "admin",
+            "passwd": "1234"
+        }
+    }
+}
